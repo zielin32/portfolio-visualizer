@@ -1,4 +1,5 @@
 import pandas as pd
+import yfinance as yf
 import matplotlib.pyplot as plt
 import matplotlib
 matplotlib.use('tkagg')
@@ -7,9 +8,10 @@ import numpy as np
 
 import requests
 
-# URL of the CSV file
-url_cspx = "https://www.ishares.com/uk/individual/en/products/253743/ishares-sp-500-b-ucits-etf-acc-fund/1506575576011.ajax?fileType=csv&fileName=CSPX_holdings&dataType=fund"
-url_iuit = "https://www.ishares.com/uk/individual/en/products/280510/ishares-sp-500-information-technology-sector-ucits-etf/1506575576011.ajax?fileType=csv&fileName=IUIT_holdings&dataType=fund"
+urls = {
+    'cspx': "https://www.ishares.com/uk/individual/en/products/253743/ishares-sp-500-b-ucits-etf-acc-fund/1506575576011.ajax?fileType=csv&fileName=CSPX_holdings&dataType=fund",
+    'iuit': "https://www.ishares.com/uk/individual/en/products/280510/ishares-sp-500-information-technology-sector-ucits-etf/1506575576011.ajax?fileType=csv&fileName=IUIT_holdings&dataType=fund"
+} 
 
 csv_dir = "csv_files/"
 # File name to save locally
@@ -30,9 +32,22 @@ def save_file(url, file_name):
   except requests.exceptions.RequestException as e:
       print(f"An error occurred: {e}")
 
+def handle_individual_stocks():
+    csv = csv_dir+"stocks.csv"
+    stocks_df = pd.read_csv(csv)
+    for _, row in stocks_df.iterrows():
+        # Create a Ticker object
+        ticker = yf.Ticker(row['Ticker'])
 
-save_file(url_cspx, cspx_file)
-save_file(url_iuit, iuit_file)
+        # Get current stock price from the `info` method
+        current_price = ticker.info['currentPrice']
+        print(f"{row['Ticker']}: {current_price}")
+
+handle_individual_stocks()
+
+
+save_file(urls['cspx'], cspx_file)
+save_file(urls['iuit'], iuit_file)
 
 # Read the CSV file into a DataFrame
 cspx_df = pd.read_csv(cspx_file, skiprows=2)
@@ -66,7 +81,7 @@ merged_df = merged_df.sort_values(by="Weight (%)", ascending=False)
 merged_df.drop(columns=["Weight (%)_df1", "Weight (%)_df2"], inplace=True)
 
 print(f"Sum of all weights is {merged_df['Weight (%)'].sum()}")
-print(merged_df.head(30))
+# print(merged_df.head(30))
 
 df = merged_df.head(30)
 
@@ -99,5 +114,5 @@ plt.legend()
 plt.gca().invert_yaxis()
 
 # Show the plot
-# plt.tight_layout()
+plt.tight_layout()
 plt.show()
