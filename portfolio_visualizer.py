@@ -9,14 +9,17 @@ import numpy as np
 import requests
 
 urls = {
-    'cspx': "https://www.ishares.com/uk/individual/en/products/253743/ishares-sp-500-b-ucits-etf-acc-fund/1506575576011.ajax?fileType=csv&fileName=CSPX_holdings&dataType=fund",
-    'iuit': "https://www.ishares.com/uk/individual/en/products/280510/ishares-sp-500-information-technology-sector-ucits-etf/1506575576011.ajax?fileType=csv&fileName=IUIT_holdings&dataType=fund"
-} 
+    'CSPX.L': "https://www.ishares.com/uk/individual/en/products/253743/ishares-sp-500-b-ucits-etf-acc-fund/1506575576011.ajax?fileType=csv&fileName=CSPX_holdings&dataType=fund",
+    'IUIT.L': "https://www.ishares.com/uk/individual/en/products/280510/ishares-sp-500-information-technology-sector-ucits-etf/1506575576011.ajax?fileType=csv&fileName=IUIT_holdings&dataType=fund"
+}
 
-csv_dir = "csv_files/"
-# File name to save locally
-cspx_file = csv_dir+"CSPX_holdings.csv"
-iuit_file = csv_dir+"IUIT_holdings.csv"
+supported_tickers = urls.keys()
+
+csv_dir = "downloaded_csv_files/"
+csv_files = {}
+for ticker in supported_tickers:
+    csv_files[ticker] = csv_dir+f"{ticker}_holdings.csv"
+
 
 def save_file(url, file_name):
   try:
@@ -32,8 +35,10 @@ def save_file(url, file_name):
   except requests.exceptions.RequestException as e:
       print(f"An error occurred: {e}")
 
+weights = {}
+input_dir = "input/"
 def handle_individual_stocks():
-    csv = csv_dir+"stocks.csv"
+    csv = input_dir+"stocks.csv"
     stocks_df = pd.read_csv(csv)
     for _, row in stocks_df.iterrows():
         # Create a Ticker object
@@ -42,16 +47,37 @@ def handle_individual_stocks():
         # Get current stock price from the `info` method
         current_price = ticker.info['currentPrice']
         print(f"{row['Ticker']}: {current_price}")
+        weights[row['Ticker']] = row['Shares']*current_price
+        # print(f"{row['Ticker']}: {weights[row['Ticker']]}")
+
+def handle_etfs():
+    csv = input_dir+"etfs.csv"
+    etfs_df = pd.read_csv(csv)
+    for _, row in etfs_df.iterrows():
+        # Create a Ticker object
+        ticker = yf.Ticker(row['Ticker'])
+        # Get current stock price from the `info` method
+        current_price = ticker.info['previousClose']
+        print(f"{row['Ticker']}: {current_price}")
+        weights[row['Ticker']] = row['Shares']*current_price
+        # print(f"{row['Ticker']}: {weights[row['Ticker']]}")
 
 handle_individual_stocks()
+handle_etfs()
+
+weights_sum = sum(weights.values())
+
+print(f"weights sum: {weights_sum}")
+weights = {key: value / weights_sum for key, value in weights.items()}
+print(weights)
 
 
-save_file(urls['cspx'], cspx_file)
-save_file(urls['iuit'], iuit_file)
+for ticker in supported_tickers:
+    save_file(urls[ticker], csv_files[ticker])
 
 # Read the CSV file into a DataFrame
-cspx_df = pd.read_csv(cspx_file, skiprows=2)
-iuit_df = pd.read_csv(iuit_file, skiprows=2)
+cspx_df = pd.read_csv(csv_files['CSPX.L'], skiprows=2)
+iuit_df = pd.read_csv(csv_files['IUIT.L'], skiprows=2)
 
 cspx_df = cspx_df[['Ticker', 'Weight (%)']]
 raw_cspx_df = cspx_df.copy()
@@ -61,15 +87,15 @@ iuit_df = iuit_df[['Ticker', 'Weight (%)']]
 # print(cspx_df.head())
 # print(iuit_df.head())
 
-cpsx_weight = 50
-iuit_weight = 50
+cpsx_weight = weights['CSPX.L']
+iuit_weight = weights['IUIT.L']
 
 for df in [cspx_df, iuit_df]:
   df["SP500 weight"] = cspx_df["Weight (%)"]
 
 # Normalize the weights so that the final weight adds up to 100%
-cspx_df['Weight (%)'] = cspx_df['Weight (%)'] * cpsx_weight / 100
-iuit_df['Weight (%)'] = iuit_df['Weight (%)'] * iuit_weight / 100
+cspx_df['Weight (%)'] = cspx_df['Weight (%)'] * cpsx_weight / (cpsx_weight+iuit_weight)
+iuit_df['Weight (%)'] = iuit_df['Weight (%)'] * iuit_weight / (cpsx_weight+iuit_weight)
 
 merged_df = pd.merge(cspx_df, iuit_df, on='Ticker', how='outer', suffixes=('_df1', '_df2'))
 merged_df['Weight (%)'] = merged_df['Weight (%)_df1'].fillna(0) + merged_df['Weight (%)_df2'].fillna(0)
