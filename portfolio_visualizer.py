@@ -35,8 +35,8 @@ def save_file(url, file_name):
   except requests.exceptions.RequestException as e:
       print(f"An error occurred: {e}")
 
-weights = {}
 input_dir = "input/"
+stock_weights = {}
 def handle_individual_stocks():
     csv = input_dir+"stocks.csv"
     stocks_df = pd.read_csv(csv)
@@ -47,9 +47,9 @@ def handle_individual_stocks():
         # Get current stock price from the `info` method
         current_price = ticker.info['currentPrice']
         print(f"{row['Ticker']}: {current_price}")
-        weights[row['Ticker']] = row['Shares']*current_price
-        # print(f"{row['Ticker']}: {weights[row['Ticker']]}")
+        stock_weights[row['Ticker']] = row['Shares']*current_price
 
+etf_weights = {}
 def handle_etfs():
     csv = input_dir+"etfs.csv"
     etfs_df = pd.read_csv(csv)
@@ -59,55 +59,101 @@ def handle_etfs():
         # Get current stock price from the `info` method
         current_price = ticker.info['previousClose']
         print(f"{row['Ticker']}: {current_price}")
-        weights[row['Ticker']] = row['Shares']*current_price
-        # print(f"{row['Ticker']}: {weights[row['Ticker']]}")
+        etf_weights[row['Ticker']] = row['Shares']*current_price
 
 handle_individual_stocks()
 handle_etfs()
 
-weights_sum = sum(weights.values())
+weights_sum = sum(stock_weights.values()) + sum(etf_weights.values())
+stock_weights = {key: (value / weights_sum) for key, value in stock_weights.items()}
+etf_weights = {key: value / weights_sum for key, value in etf_weights.items()}
+
+weights = stock_weights | etf_weights
 
 print(f"weights sum: {weights_sum}")
-weights = {key: value / weights_sum for key, value in weights.items()}
 print(weights)
 
+# TODO: dotąd wszystko ok z wagami, ale dalej coś się psuje
 
 for ticker in supported_tickers:
     save_file(urls[ticker], csv_files[ticker])
 
-# Read the CSV file into a DataFrame
-cspx_df = pd.read_csv(csv_files['CSPX.L'], skiprows=2)
-iuit_df = pd.read_csv(csv_files['IUIT.L'], skiprows=2)
+# Read the CSV files into DataFrames
+dataframes = {}
+for ticker in ['CSPX.L', 'IUIT.L']:
+    dataframes[ticker] = pd.read_csv(csv_files[ticker], skiprows=2)
 
-cspx_df = cspx_df[['Ticker', 'Weight (%)']]
-raw_cspx_df = cspx_df.copy()
-iuit_df = iuit_df[['Ticker', 'Weight (%)']]
-
-# # Display the first few rows
-# print(cspx_df.head())
-# print(iuit_df.head())
+cspx_df = dataframes['CSPX.L'][['Ticker', 'Weight (%)']]
+# raw_cspx_df = cspx_df.copy()
+iuit_df = dataframes['IUIT.L'][['Ticker', 'Weight (%)']]
 
 cpsx_weight = weights['CSPX.L']
 iuit_weight = weights['IUIT.L']
 
-for df in [cspx_df, iuit_df]:
-  df["SP500 weight"] = cspx_df["Weight (%)"]
+data = {
+    "Ticker": stock_weights.keys(),
+    "Weight (%)": [value * 100 for value in stock_weights.values()]
+}
+stock_weights_df = pd.DataFrame(data)
 
-# Normalize the weights so that the final weight adds up to 100%
-cspx_df['Weight (%)'] = cspx_df['Weight (%)'] * cpsx_weight / (cpsx_weight+iuit_weight)
-iuit_df['Weight (%)'] = iuit_df['Weight (%)'] * iuit_weight / (cpsx_weight+iuit_weight)
+for df in [cspx_df, iuit_df, stock_weights_df]:
+  df.loc[:, "SP500 Weight (%)"] = cspx_df["Weight (%)"]
 
-merged_df = pd.merge(cspx_df, iuit_df, on='Ticker', how='outer', suffixes=('_df1', '_df2'))
-merged_df['Weight (%)'] = merged_df['Weight (%)_df1'].fillna(0) + merged_df['Weight (%)_df2'].fillna(0)
-# merged_df = merged_df[['Ticker', 'Weight (%)']]
+# import pdb; pdb.set_trace()
 
-merged_df["SP500 weight"] = merged_df["SP500 weight_df1"]
-merged_df.drop(columns=["SP500 weight_df1", "SP500 weight_df2"], inplace=True)
-merged_df = merged_df.sort_values(by="Weight (%)", ascending=False)
-merged_df.drop(columns=["Weight (%)_df1", "Weight (%)_df2"], inplace=True)
+# ######## TODO: need to rewrite this
+# # Normalize the weights so that the final weight adds up to 100%
+# cspx_df['Weight (%)'] = cspx_df['Weight (%)'] * cpsx_weight
+# iuit_df['Weight (%)'] = iuit_df['Weight (%)'] * iuit_weight
+
+# merged_df = pd.merge(cspx_df, iuit_df, stock_weights_df, on='Ticker', how='outer', suffixes=('_df1', '_df2', '_df3'))
+# merged_df['Weight (%)'] = merged_df['Weight (%)_df1'].fillna(0) + merged_df['Weight (%)_df2'].fillna(0) + merged_df['Weight (%)_df3'].fillna(0)
+# # merged_df = merged_df[['Ticker', 'Weight (%)']]
+
+# merged_df["SP500 weight"] = merged_df["SP500 weight_df1"]
+# merged_df.drop(columns=["SP500 weight_df1", "SP500 weight_df2", "SP500 weight_df3"], inplace=True)
+# merged_df = merged_df.sort_values(by="Weight (%)", ascending=False)
+# merged_df.drop(columns=["Weight (%)_df1", "Weight (%)_df2", "Weight (%)_df3"], inplace=True)
+# ########## End of TODO
+
+def merge_and_normalize(etf_dfs, stock_dfs, merge_column='Ticker', weight_column='Weight (%)_df'):
+    for etf in etf_dfs.items():
+        etf[1]['Weight (%)'] *= etf_weights[etf[0]]
+    dfs = list(etf_dfs.values()) + [stock_dfs]
+
+    # Ensure that the first DataFrame is the starting point
+    merged_df = dfs[0]
+    import pdb; pdb.set_trace()
+    
+    # Sequentially merge the remaining DataFrames
+    for i, df in enumerate(dfs[1:]):
+        merged_df = pd.merge(merged_df, df, on=merge_column, how='outer', suffixes=(f'_df1', f'_df2'))
+        # Sum the weight columns, filling NaN with 0
+        weight_columns = [col for col in merged_df.columns if weight_column in col and "SP500" not in col]
+        columns_to_drop = [col for col in merged_df.columns if weight_column in col]
+        merged_df['Weight (%)'] = merged_df[weight_columns].fillna(0).sum(axis=1)
+        merged_df['SP500 Weight (%)'] = merged_df['SP500 Weight (%)_df1']
+        # Drop the intermediate weight columns
+        merged_df.drop(columns=columns_to_drop, inplace=True)
+    
+    # Optionally, sort the result by 'Weight (%)'
+    merged_df = merged_df.sort_values(by="Weight (%)", ascending=False).reset_index(drop=True)
+    
+    # Drop any other unnecessary columns, for example, 'SP500 weight_df1', etc.
+    suffixes_to_drop = [col for col in merged_df.columns if col.endswith('df1') or col.endswith('df2') or col.endswith('df3')]
+    merged_df.drop(columns=suffixes_to_drop, inplace=True)
+    
+    return merged_df
+
+# List of DataFrames to merge
+etf_dfs = {'CSPX.L': cspx_df, 'IUIT.L': iuit_df}
+
+# Call the function
+merged_df = merge_and_normalize(etf_dfs, stock_weights_df)
+
+# import pdb; pdb.set_trace()
 
 print(f"Sum of all weights is {merged_df['Weight (%)'].sum()}")
-# print(merged_df.head(30))
 
 df = merged_df.head(30)
 
@@ -118,7 +164,7 @@ plt.figure(figsize=(17, 12))
 
 # Plot the horizontal bars
 bars1 = plt.barh(y - 20, df['Weight (%)'], height=40, label='Weight (%)')
-bars2 = plt.barh(y + 20, df['SP500 weight'], height=40, label='SP500 weight')
+bars2 = plt.barh(y + 20, df['SP500 Weight (%)'], height=40, label='SP500 Weight (%)')
 
 # Add numbers next to the bars
 for bar in bars1:
