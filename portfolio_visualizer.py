@@ -8,10 +8,22 @@ import numpy as np
 
 import requests
 
+# Fetch the data
+usd_eur_data = yf.Ticker("USDEUR=X")
+# Get the current price
+usd_eur = usd_eur_data.history(period="1d")["Close"].iloc[-1]
+print(usd_eur)
+
 urls = {
     'CSPX.L': "https://www.ishares.com/uk/individual/en/products/253743/ishares-sp-500-b-ucits-etf-acc-fund/1506575576011.ajax?fileType=csv&fileName=CSPX_holdings&dataType=fund",
-    'IUIT.L': "https://www.ishares.com/uk/individual/en/products/280510/ishares-sp-500-information-technology-sector-ucits-etf/1506575576011.ajax?fileType=csv&fileName=IUIT_holdings&dataType=fund"
+    'IUIT.L': "https://www.ishares.com/uk/individual/en/products/280510/ishares-sp-500-information-technology-sector-ucits-etf/1506575576011.ajax?fileType=csv&fileName=IUIT_holdings&dataType=fund",
+    'CNDX.L': "https://www.ishares.com/uk/individual/en/products/253741/ishares-nasdaq-100-ucits-etf/1506575576011.ajax?fileType=csv&fileName=CNDX_holdings&dataType=fund"
 }
+# aliases
+urls["SP500"] = urls["CSPX.L"]
+urls["IT"] = urls["IUIT.L"]
+urls["Nasdaq100"] = urls["CNDX.L"]
+urls["XNAS.DE"] = urls["CNDX.L"]
 
 supported_tickers = urls.keys()
 
@@ -58,8 +70,11 @@ def handle_etfs():
         ticker = yf.Ticker(row['Ticker'])
         # Get current stock price from the `info` method
         current_price = ticker.info['previousClose']
+        if row['Currency'] == "EUR":
+            current_price *= usd_eur
         print(f"{row['Ticker']}: {current_price}")
         etf_weights[row['Ticker']] = row['Shares']*current_price
+    etfs_df.drop(columns=["Currency"], inplace=True)
 
 handle_individual_stocks()
 handle_etfs()
@@ -80,15 +95,12 @@ for ticker in supported_tickers:
 
 # Read the CSV files into DataFrames
 dataframes = {}
-for ticker in ['CSPX.L', 'IUIT.L']:
+for ticker in ['CSPX.L', 'IUIT.L', 'XNAS.DE']:
     dataframes[ticker] = pd.read_csv(csv_files[ticker], skiprows=2)
 
 cspx_df = dataframes['CSPX.L'][['Ticker', 'Weight (%)']]
-# raw_cspx_df = cspx_df.copy()
 iuit_df = dataframes['IUIT.L'][['Ticker', 'Weight (%)']]
-
-cpsx_weight = weights['CSPX.L']
-iuit_weight = weights['IUIT.L']
+xnas_df = dataframes['XNAS.DE'][['Ticker', 'Weight (%)']]
 
 data = {
     "Ticker": stock_weights.keys(),
@@ -96,7 +108,7 @@ data = {
 }
 stock_weights_df = pd.DataFrame(data)
 
-for df in [cspx_df, iuit_df, stock_weights_df]:
+for df in [cspx_df, iuit_df, xnas_df, stock_weights_df]:
   df.loc[:, "SP500 Weight (%)"] = cspx_df["Weight (%)"]
 
 # ######## TODO: need to rewrite this
@@ -143,7 +155,7 @@ def merge_and_normalize(etf_dfs, stock_dfs, merge_column='Ticker', weight_column
     return merged_df
 
 # List of DataFrames to merge
-etf_dfs = {'CSPX.L': cspx_df, 'IUIT.L': iuit_df}
+etf_dfs = {'CSPX.L': cspx_df, 'IUIT.L': iuit_df, 'XNAS.DE': xnas_df}
 
 # Call the function
 merged_df = merge_and_normalize(etf_dfs, stock_weights_df)
