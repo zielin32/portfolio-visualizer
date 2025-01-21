@@ -20,10 +20,16 @@ urls = {
     'CNDX.L': "https://www.ishares.com/uk/individual/en/products/253741/ishares-nasdaq-100-ucits-etf/1506575576011.ajax?fileType=csv&fileName=CNDX_holdings&dataType=fund"
 }
 # aliases
-urls["SP500"] = urls["CSPX.L"]
-urls["IT"] = urls["IUIT.L"]
-urls["Nasdaq100"] = urls["CNDX.L"]
+# These might be useful in the future, but we'll see
+# urls["SP500"] = urls["CSPX.L"]
+# urls["IT"] = urls["IUIT.L"]
+# urls["Nasdaq100"] = urls["CNDX.L"]
+
+# This is because it's easier to download holdings data for iShares ETFs
+# and both ETFs follow the same index
 urls["XNAS.DE"] = urls["CNDX.L"]
+
+supported_etfs = ("CSPX.L", "IUIT.L", "XNAS.DE")
 
 supported_tickers = urls.keys()
 
@@ -88,19 +94,17 @@ weights = stock_weights | etf_weights
 print(f"weights sum: {weights_sum}")
 print(weights)
 
-# TODO: dotąd wszystko ok z wagami, ale dalej coś się psuje
-
 for ticker in supported_tickers:
     save_file(urls[ticker], csv_files[ticker])
 
 # Read the CSV files into DataFrames
 dataframes = {}
-for ticker in ['CSPX.L', 'IUIT.L', 'XNAS.DE']:
+for ticker in supported_etfs:
     dataframes[ticker] = pd.read_csv(csv_files[ticker], skiprows=2)
 
-cspx_df = dataframes['CSPX.L'][['Ticker', 'Weight (%)']]
-iuit_df = dataframes['IUIT.L'][['Ticker', 'Weight (%)']]
-xnas_df = dataframes['XNAS.DE'][['Ticker', 'Weight (%)']]
+etf_dfs = {}
+for ticker in supported_etfs:
+    etf_dfs[ticker] = dataframes[ticker][['Ticker', 'Weight (%)']]
 
 data = {
     "Ticker": stock_weights.keys(),
@@ -108,23 +112,8 @@ data = {
 }
 stock_weights_df = pd.DataFrame(data)
 
-for df in [cspx_df, iuit_df, xnas_df, stock_weights_df]:
-  df.loc[:, "SP500 Weight (%)"] = cspx_df["Weight (%)"]
-
-# ######## TODO: need to rewrite this
-# # Normalize the weights so that the final weight adds up to 100%
-# cspx_df['Weight (%)'] = cspx_df['Weight (%)'] * cpsx_weight
-# iuit_df['Weight (%)'] = iuit_df['Weight (%)'] * iuit_weight
-
-# merged_df = pd.merge(cspx_df, iuit_df, stock_weights_df, on='Ticker', how='outer', suffixes=('_df1', '_df2', '_df3'))
-# merged_df['Weight (%)'] = merged_df['Weight (%)_df1'].fillna(0) + merged_df['Weight (%)_df2'].fillna(0) + merged_df['Weight (%)_df3'].fillna(0)
-# # merged_df = merged_df[['Ticker', 'Weight (%)']]
-
-# merged_df["SP500 weight"] = merged_df["SP500 weight_df1"]
-# merged_df.drop(columns=["SP500 weight_df1", "SP500 weight_df2", "SP500 weight_df3"], inplace=True)
-# merged_df = merged_df.sort_values(by="Weight (%)", ascending=False)
-# merged_df.drop(columns=["Weight (%)_df1", "Weight (%)_df2", "Weight (%)_df3"], inplace=True)
-# ########## End of TODO
+for df in list(etf_dfs.values()) + [stock_weights_df]:
+  df.loc[:, "SP500 Weight (%)"] = etf_dfs["CSPX.L"]["Weight (%)"]
 
 def merge_and_normalize(etf_dfs, stock_dfs, merge_column='Ticker', weight_column='Weight (%)_df'):
     for etf in etf_dfs.items():
@@ -154,15 +143,12 @@ def merge_and_normalize(etf_dfs, stock_dfs, merge_column='Ticker', weight_column
     
     return merged_df
 
-# List of DataFrames to merge
-etf_dfs = {'CSPX.L': cspx_df, 'IUIT.L': iuit_df, 'XNAS.DE': xnas_df}
-
 # Call the function
 merged_df = merge_and_normalize(etf_dfs, stock_weights_df)
 
 checksum = merged_df['Weight (%)'].sum()
-assert checksum > 99.8 and checksum < 100.2, "Sum of all weights does not add up to 100"
 print(f"Sum of all weights is {checksum}")
+assert checksum > 99.8 and checksum < 100.2, "Sum of all weights does not add up to 100"
 
 df = merged_df.head(30)
 
