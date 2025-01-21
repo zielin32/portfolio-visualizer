@@ -99,8 +99,6 @@ stock_weights_df = pd.DataFrame(data)
 for df in [cspx_df, iuit_df, stock_weights_df]:
   df.loc[:, "SP500 Weight (%)"] = cspx_df["Weight (%)"]
 
-# import pdb; pdb.set_trace()
-
 # ######## TODO: need to rewrite this
 # # Normalize the weights so that the final weight adds up to 100%
 # cspx_df['Weight (%)'] = cspx_df['Weight (%)'] * cpsx_weight
@@ -123,7 +121,6 @@ def merge_and_normalize(etf_dfs, stock_dfs, merge_column='Ticker', weight_column
 
     # Ensure that the first DataFrame is the starting point
     merged_df = dfs[0]
-    import pdb; pdb.set_trace()
     
     # Sequentially merge the remaining DataFrames
     for i, df in enumerate(dfs[1:]):
@@ -151,9 +148,9 @@ etf_dfs = {'CSPX.L': cspx_df, 'IUIT.L': iuit_df}
 # Call the function
 merged_df = merge_and_normalize(etf_dfs, stock_weights_df)
 
-# import pdb; pdb.set_trace()
-
-print(f"Sum of all weights is {merged_df['Weight (%)'].sum()}")
+checksum = merged_df['Weight (%)'].sum()
+assert checksum > 99.8 and checksum < 100.2, "Sum of all weights does not add up to 100"
+print(f"Sum of all weights is {checksum}")
 
 df = merged_df.head(30)
 
