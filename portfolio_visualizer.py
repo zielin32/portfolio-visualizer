@@ -8,7 +8,7 @@ from typing import Dict, List, Tuple
 import numpy as np
 from helper_functions import *
 
-benchmark_str = "Nasdaq100"
+benchmark_str = "SP500"
 benchmark_weight_str = benchmark_str + " Weight (%)"
 
 URLS = {
@@ -16,11 +16,6 @@ URLS = {
     'IUIT.L': "https://www.ishares.com/uk/individual/en/products/280510/ishares-sp-500-information-technology-sector-ucits-etf/1506575576011.ajax?fileType=csv&fileName=IUIT_holdings&dataType=fund",
     'CNDX.L': "https://www.ishares.com/uk/individual/en/products/253741/ishares-nasdaq-100-ucits-etf/1506575576011.ajax?fileType=csv&fileName=CNDX_holdings&dataType=fund"
 }
-# aliases
-# These might be useful in the future, but we'll see
-# urls["SP500"] = urls["CSPX.L"]
-# urls["IT"] = urls["IUIT.L"]
-# urls["Nasdaq100"] = urls["CNDX.L"]
 
 # This is because it's easier to download holdings data for iShares ETFs
 # and both ETFs follow the same index
@@ -29,16 +24,42 @@ URLS["XNAS.DE"] = URLS["CNDX.L"]
 supported_etfs = ("CSPX.L", "IUIT.L", "XNAS.DE")
 INPUT_DIR = "input/"
 
-def merge_and_normalize(etf_dfs, stock_dfs, etf_weights, merge_column='Ticker', weight_column='Weight (%)_df'):
+aliases = {"SP500": "CSPX.L", "Nasdaq100": "XNAS.DE", "IT": "IUIT.L"}
+
+def _normalize_stock_weights_in_etfs(etf_dfs: Dict[str, pd.DataFrame],
+                                     etf_weights: Dict[str, np.float64]
+                                     ) -> None:
+    """
+    Multiply the weight of each stock in each ETF by the weight of that ETF in the whole portfolio.
+    For example, if a weight of an S&P500 ETF in a portfolio is 45%,
+    the weight of each stock in that ETF is going to be multiplied by 0.45
+    """
     for etf in etf_dfs.items():
         etf[1]['Weight (%)'] *= etf_weights[etf[0]]
-    dfs = list(etf_dfs.values()) + [stock_dfs]
+
+def merge_and_normalize(etf_dfs: Dict[str, pd.DataFrame],
+                        stock_dfs: pd.DataFrame,
+                        etf_weights: Dict[str, np.float64],
+                        merge_column='Ticker',
+                        weight_column='Weight (%)_df'
+                        ) -> pd.DataFrame:
+   
+    # Individual stock weights don't need any normalization
+    # because each stock already has the proper weight in the portfolio
+    _normalize_stock_weights_in_etfs(etf_dfs, etf_weights)
+
+    # Here, benchmark_etf if popped from the dictionary of supported ETFs,
+    # and will be used as a base for merging all dataframes toghether.
+    # It is important that this base is the benchmark, because outherwise
+    # benchmark weights will not be assigned correctly.
+    benchmark_etf = etf_dfs.pop(aliases[benchmark_str])
+    combined_dfs_list = list(etf_dfs.values()) + [stock_dfs]
 
     # Ensure that the first DataFrame is the starting point
-    merged_df = dfs[0]
+    merged_df = benchmark_etf
     
     # Sequentially merge the remaining DataFrames
-    for i, df in enumerate(dfs[1:]):
+    for i, df in enumerate(combined_dfs_list):
         merged_df = pd.merge(merged_df, df, on=merge_column, how='outer', suffixes=(f'_df1', f'_df2'))
         # Sum the weight columns, filling NaN with 0
         weight_columns = [col for col in merged_df.columns if weight_column in col and benchmark_str not in col]
@@ -48,7 +69,7 @@ def merge_and_normalize(etf_dfs, stock_dfs, etf_weights, merge_column='Ticker', 
         # Drop the intermediate weight columns
         merged_df.drop(columns=columns_to_drop, inplace=True)
     
-    # Optionally, sort the result by 'Weight (%)'
+    # Sort the result by 'Weight (%)'
     merged_df = merged_df.sort_values(by="Weight (%)", ascending=False).reset_index(drop=True)
     
     # Drop any other unnecessary columns, for example, 'SP500 weight_df1', etc.
@@ -77,7 +98,7 @@ def get_stock_weights():
         # Get current stock price from the `info` method
         current_price = ticker.info['currentPrice']
         print(f"{row['Ticker']}: {current_price}")
-        stock_weights[row['Ticker']] = row['Shares']*current_price
+        stock_weights[row['Ticker']] = float(row['Shares'])*current_price
     return stock_weights
 
 def get_etf_weights():
@@ -161,7 +182,7 @@ def add_benchmark_weight_to_all_dataframes(etf_dfs: Dict[str, pd.DataFrame], sto
     print(f"type stock_weights_df: {type(stock_weights_df)}")
     etf_and_stocks_dataframes_list = list(etf_dfs.values()) + [stock_weights_df]
     for df in etf_and_stocks_dataframes_list:
-        df.loc[:, benchmark_weight_str] = etf_dfs["XNAS.DE"]["Weight (%)"]
+        df.loc[:, benchmark_weight_str] = etf_dfs[aliases[benchmark_str]]["Weight (%)"]
 
 def main():
     csv_files = download_holdings_data()
@@ -176,7 +197,6 @@ def main():
     }
     stock_weights_df = pd.DataFrame(stock_weights_data)
 
-    import pdb; pdb.set_trace()
     add_benchmark_weight_to_all_dataframes(etf_dfs, stock_weights_df)
 
     # Call the function
