@@ -1,0 +1,120 @@
+import yfinance as yf
+import pandas as pd
+from math import sqrt
+from datetime import date
+from typing import List
+
+def get_current_portfolio():
+    print("Current portfolio:")
+
+def adjust_weight(row):
+    # penalty for high downside (-1/3)
+    if row['downside'] > row['upside'] + 5:
+        row['weight'] = row['weight'] / 1.5
+    # premium for negative downside (+20%)
+    if row['downside'] < 0:
+        row['weight'] = row['weight'] * 1.2
+    # premium for "strong buy" recommendation
+    if row['recommendation'] == 'strong_buy':
+        row['weight'] = row['weight'] * 1.1
+    return row
+
+def get_schd_holdings() -> List:
+    schg_holdings = pd.read_csv("downloaded_csv_files/SCHG_holdings.csv", skipfooter=8, engine='python')
+    return schg_holdings['Symbol'].tolist()
+
+def get_stock_info(tickers: List) -> pd.DataFrame:
+    stock_data = []
+    for ticker in tickers:
+        stock = yf.Ticker(ticker)
+        try:
+            name = stock.info['shortName']
+        except:
+            import pdb; pdb.set_trace()
+        num_analysts = stock.info.get("numberOfAnalystOpinions", 0)
+        if num_analysts == 0:
+            print(f"Warning: no analysts for {name}")
+            continue
+        if num_analysts < 10:
+            print(f"Skipping {name} - too few analysts")
+            continue
+        market_cap = stock.info.get('marketCap', None)
+        if market_cap < 10000000000:  # 10B
+            continue
+        targets_mean = stock.analyst_price_targets['mean']
+        # targets_median = stock.analyst_price_targets['median']
+        current_price = stock.analyst_price_targets['current']
+        targets_low = stock.analyst_price_targets['low']
+        targets_high = stock.analyst_price_targets['high']
+        upside = ((targets_mean - current_price) / current_price) * 100
+        downside = (current_price - targets_low) / current_price * 100
+        recommendation = stock.info.get('recommendationKey', None)
+        industry = stock.info.get('industry', None)
+
+        stock_data.append({
+            "ticker": ticker,
+            "name": name,
+            "market_cap": round(market_cap / 1000000000, 2),
+            "current_price": round(current_price, 2),
+            "low": round(targets_low),
+            "mean": round(targets_mean),
+            "high": round(targets_high),
+            "upside": round(upside, 2),
+            "downside": round(downside, 2),
+            "num_analysts": num_analysts,
+            "recommendation": recommendation,
+            "industry": industry,
+        })
+    stock_info = pd.DataFrame(stock_data)
+    stock_info.sort_values(by="market_cap", ascending=False, inplace=True)
+    stock_info.reset_index(drop=True, inplace=True)
+
+    return stock_info
+
+def get_stocks_with_high_upside(stock_info) -> pd.DataFrame:
+    stocks_with_high_upside = stock_info[((stock_info['upside'] > 10) & (stock_info['upside'] + 5 > stock_info['downside'])) \
+        | (stock_info['upside'] > 15) | (stock_info['downside'] < 5)]
+    # Add 50B to make smaller positions more significant
+    stocks_with_high_upside["weight"] = stocks_with_high_upside["market_cap"] + 100.0
+    # Take sqrt to make smaller positions more significant
+    stocks_with_high_upside["weight"] = stocks_with_high_upside["weight"] ** 0.4
+    stocks_with_high_upside["weight"] = stocks_with_high_upside["weight"] * (stocks_with_high_upside["upside"] ** 0.5)
+
+    stocks_with_high_upside = stocks_with_high_upside.apply(adjust_weight, axis=1)
+
+
+    weight_sum = stocks_with_high_upside["weight"].sum()
+    stocks_with_high_upside["weight"] = (stocks_with_high_upside["weight"] / weight_sum) * 100
+
+    stocks_with_high_upside.sort_values(by="weight", ascending=False, inplace=True)
+    stocks_with_high_upside.reset_index(drop=True, inplace=True)
+
+    return stocks_with_high_upside
+
+def main():
+    tickers = [
+        "NVDA", "AAPL", "MSFT", "AMZN", "GOOG", "META", "TSLA", "AVGO", "ORCL", "V", "MA", "NFLX", "COST",
+        "ACN", "MELI", "INTU", "AMD", "UBER", "CRM", "SPGI", "NU", 
+        "CMG", "TXRH", "SNPS", "PANW",  "ISRG", "CRWD",  "BKNG", 
+        "AXON", "TEAM", "ASML", "ARM", "AMAT", "ADBE", "UNH", "ANET",
+        "TSM", "SPOT", "NOW",  "NKE", "FICO", "LLY", "DASH", "IDXX",
+        "MSCI", "MCO", "BLK", "VEEV", "WDAY", "SAP", "TOST", "PLTR",
+        "JPM", "WFC", "BAC", "SCHW", "FI", "COF", "AXP", "GS", "SYK", "BSX", "APP", "ADP", "APH", "MRVL", "DELL",
+    ]
+    # tickers = get_schg_holdings()
+    # tickers += ['ASML', 'TSM', 'SAP', 'MELI', 'NU', 'ARM']
+    # tickers = ['NVDA', 'MSFT', 'UNH', 'AMD', "UBER", 'ASML', 'ADBE', 'INTU', 'BLK', 'MELI', 'SPGI', 'LLY', 'SNPS', 'VEEV', 'WDAY', 'CRM', 'NU', 'CMG', 'FICO', 'IDXX']
+
+    stock_info = get_stock_info(tickers)
+    stocks_with_high_upside = get_stocks_with_high_upside(stock_info)
+
+    pd.set_option('display.max_rows', None)  # Show all rows
+    print("All stocks:")
+    print(stock_info.drop(columns=['industry'], inplace=False))
+    print()
+    # pd.set_option('display.max_columns', None)  # Show all columns
+    print("Model portfolio:")
+    print(stocks_with_high_upside.drop(columns=['industry'], inplace=False))
+
+if __name__ == "__main__":
+    main()
