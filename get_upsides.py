@@ -4,8 +4,16 @@ from math import sqrt
 from datetime import date
 from typing import List
 
-def get_current_portfolio():
+def get_current_portfolio(stock_info: pd.DataFrame):
+    INPUT_DIR = "input/"
+    csv = INPUT_DIR+"stocks.csv"
+    stocks_df = pd.read_csv(csv)
+    current_stocks = stocks_df['Ticker'].tolist()
+    current_portfolio = stock_info[stock_info['ticker'].isin(current_stocks)]
+    current_portfolio.reset_index(drop=True, inplace=True)
     print("Current portfolio:")
+    print(current_portfolio)
+
 
 def adjust_weight(row):
     # penalty for high downside (-1/3)
@@ -49,7 +57,6 @@ def get_stock_info(tickers: List) -> pd.DataFrame:
         upside = ((targets_mean - current_price) / current_price) * 100
         downside = (current_price - targets_low) / current_price * 100
         recommendation = stock.info.get('recommendationKey', None)
-        industry = stock.info.get('industry', None)
 
         stock_data.append({
             "ticker": ticker,
@@ -63,7 +70,6 @@ def get_stock_info(tickers: List) -> pd.DataFrame:
             "downside": round(downside, 2),
             "num_analysts": num_analysts,
             "recommendation": recommendation,
-            "industry": industry,
         })
     stock_info = pd.DataFrame(stock_data)
     stock_info.sort_values(by="market_cap", ascending=False, inplace=True)
@@ -109,12 +115,17 @@ def main():
     stocks_with_high_upside = get_stocks_with_high_upside(stock_info)
 
     pd.set_option('display.max_rows', None)  # Show all rows
+    print()
     print("All stocks:")
-    print(stock_info.drop(columns=['industry'], inplace=False))
+    print(stock_info)
     print()
     # pd.set_option('display.max_columns', None)  # Show all columns
     print("Model portfolio:")
-    print(stocks_with_high_upside.drop(columns=['industry'], inplace=False))
+    print(stocks_with_high_upside)
+    print()
+
+    get_current_portfolio(stock_info)
+
 
 if __name__ == "__main__":
     main()
