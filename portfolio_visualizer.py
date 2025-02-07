@@ -14,14 +14,17 @@ benchmark_weight_str = benchmark_str + " Weight (%)"
 URLS = {
     'CSPX.L': "https://www.ishares.com/uk/individual/en/products/253743/ishares-sp-500-b-ucits-etf-acc-fund/1506575576011.ajax?fileType=csv&fileName=CSPX_holdings&dataType=fund",
     'IUIT.L': "https://www.ishares.com/uk/individual/en/products/280510/ishares-sp-500-information-technology-sector-ucits-etf/1506575576011.ajax?fileType=csv&fileName=IUIT_holdings&dataType=fund",
-    'CNDX.L': "https://www.ishares.com/uk/individual/en/products/253741/ishares-nasdaq-100-ucits-etf/1506575576011.ajax?fileType=csv&fileName=CNDX_holdings&dataType=fund"
+    'CNDX.L': "https://www.ishares.com/uk/individual/en/products/253741/ishares-nasdaq-100-ucits-etf/1506575576011.ajax?fileType=csv&fileName=CNDX_holdings&dataType=fund",
+    'QDVG.DE': "https://www.ishares.com/uk/individual/en/products/280507/ishares-sp-500-health-care-sector-ucits-etf/1506575576011.ajax?fileType=csv&fileName=IUHC_holdings&dataType=fund"
 }
 
 # This is because it's easier to download holdings data for iShares ETFs
 # and both ETFs follow the same index
 URLS["XNAS.DE"] = URLS["CNDX.L"]
+URLS["WTEF.DE"] = URLS["CSPX.L"]
+URLS["IUHC.L"] = URLS["QDVG.DE"]
 
-supported_etfs = ("CSPX.L", "IUIT.L", "XNAS.DE")
+supported_etfs = ("CSPX.L", "IUIT.L", "XNAS.DE", "WTEF.DE", "QDVG.DE", "IUHC.L")
 INPUT_DIR = "input/"
 
 aliases = {"SP500": "CSPX.L", "Nasdaq100": "XNAS.DE", "IT": "IUIT.L"}
@@ -115,6 +118,8 @@ def get_etf_weights():
             current_price *= usd_eur
         print(f"{row['Ticker']}: {current_price}")
         etf_weights[row['Ticker']] = row['Shares']*current_price
+        if row['Ticker'] == "WTEF.DE":
+            etf_weights[row['Ticker']] *= 0.9  # Efficient Core ETFs have 90% stock allocation
     etfs_df.drop(columns=["Currency"], inplace=True)
     return etf_weights
 
