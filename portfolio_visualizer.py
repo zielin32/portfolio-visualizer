@@ -40,6 +40,19 @@ def _normalize_stock_weights_in_etfs(etf_dfs: Dict[str, pd.DataFrame],
     for etf in etf_dfs.items():
         etf[1]['Weight (%)'] *= etf_weights[etf[0]]
 
+def merge_google(merged_df):
+    # Step 1: Filter rows with "GOOG" and "GOOGL"
+    goog_rows = merged_df[merged_df['Ticker'].isin(['GOOG', 'GOOGL'])]
+
+    # Step 2: Sum the values for "GOOG" and "GOOGL"
+    goog_merged = goog_rows[['Weight (%)', 'SP500 Weight (%)']].sum().to_frame().T
+    goog_merged.insert(0,'Ticker','GOOG')
+
+    # Step 3: Combine the merged row with the rest of the DataFrame
+    df_rest = merged_df[~merged_df['Ticker'].isin(['GOOG', 'GOOGL'])]  # Exclude "GOOG" and "GOOGL"
+    df_final = pd.concat([df_rest, goog_merged], ignore_index=True)
+    return df_final
+
 def merge_and_normalize(etf_dfs: Dict[str, pd.DataFrame],
                         stock_dfs: pd.DataFrame,
                         etf_weights: Dict[str, np.float64],
@@ -71,6 +84,8 @@ def merge_and_normalize(etf_dfs: Dict[str, pd.DataFrame],
         merged_df[benchmark_weight_str] = merged_df[benchmark_weight_str+'_df1']
         # Drop the intermediate weight columns
         merged_df.drop(columns=columns_to_drop, inplace=True)
+    
+    merged_df = merge_google(merged_df)
     
     # Sort the result by 'Weight (%)'
     merged_df = merged_df.sort_values(by="Weight (%)", ascending=False).reset_index(drop=True)
