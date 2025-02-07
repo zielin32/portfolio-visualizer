@@ -206,11 +206,13 @@ def add_benchmark_weight_to_all_dataframes(etf_dfs: Dict[str, pd.DataFrame], sto
         df.loc[:, benchmark_weight_str] = etf_dfs[aliases[benchmark_str]]["Weight (%)"]
 
 def print_over_and_underweight_positions(merged_df):
-    merged_df["Weight difference"] = merged_df["Weight (%)"] - merged_df[benchmark_weight_str]
+    merged_df.insert(1, "Weight difference", merged_df["Weight (%)"] - merged_df[benchmark_weight_str])
     overweight = merged_df[merged_df["Weight difference"] > 0.01].sort_values(by="Weight difference", ascending=False).head(30)
+    overweight.insert(1, 'Name', None)
     for index, row in overweight.iterrows():
         overweight.loc[index, "Name"] = yf.Ticker(row["Ticker"]).info.get('shortName', "noname")
     underweight = merged_df[merged_df["Weight difference"] < -0.01].sort_values(by="Weight difference", ascending=True).head(30)
+    underweight.insert(1, 'Name', None)
     for index, row in underweight.iterrows():
         underweight.loc[index, "Name"] = yf.Ticker(row["Ticker"]).info.get('shortName', "noname")
 
