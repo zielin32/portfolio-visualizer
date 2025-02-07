@@ -78,6 +78,7 @@ def merge_and_normalize(etf_dfs: Dict[str, pd.DataFrame],
     # Drop any other unnecessary columns, for example, 'SP500 weight_df1', etc.
     suffixes_to_drop = [col for col in merged_df.columns if col.endswith('df1') or col.endswith('df2') or col.endswith('df3')]
     merged_df.drop(columns=suffixes_to_drop, inplace=True)
+    merged_df[benchmark_weight_str] = merged_df[benchmark_weight_str].fillna(0.00)
     
     return merged_df
 
@@ -189,6 +190,22 @@ def add_benchmark_weight_to_all_dataframes(etf_dfs: Dict[str, pd.DataFrame], sto
     for df in etf_and_stocks_dataframes_list:
         df.loc[:, benchmark_weight_str] = etf_dfs[aliases[benchmark_str]]["Weight (%)"]
 
+def print_over_and_underweight_positions(merged_df):
+    merged_df["Weight difference"] = merged_df["Weight (%)"] - merged_df[benchmark_weight_str]
+    overweight = merged_df[merged_df["Weight difference"] > 0.01].sort_values(by="Weight difference", ascending=False).head(30)
+    for index, row in overweight.iterrows():
+        overweight.loc[index, "Name"] = yf.Ticker(row["Ticker"]).info.get('shortName', "noname")
+    underweight = merged_df[merged_df["Weight difference"] < -0.01].sort_values(by="Weight difference", ascending=True).head(30)
+    for index, row in underweight.iterrows():
+        underweight.loc[index, "Name"] = yf.Ticker(row["Ticker"]).info.get('shortName', "noname")
+
+    # sorted_by_weight_difference = merged_df.sort_values(by="Weight difference", ascending=False)
+    print("Overweight:")
+    print(overweight) 
+    print("Underweight:")
+    print(underweight)
+
+
 def main():
     csv_files = download_holdings_data()
 
@@ -204,8 +221,9 @@ def main():
 
     add_benchmark_weight_to_all_dataframes(etf_dfs, stock_weights_df)
 
-    # Call the function
     merged_df = merge_and_normalize(etf_dfs, stock_weights_df, etf_weights)
+
+    print_over_and_underweight_positions(merged_df)
 
     checksum = merged_df['Weight (%)'].sum()
     print(f"Sum of all weights is {checksum}")
